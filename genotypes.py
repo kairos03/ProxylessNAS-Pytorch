@@ -2,7 +2,17 @@ from collections import namedtuple
 
 Genotype = namedtuple('Genotype', 'normal normal_concat reduce reduce_concat')
 
-PRIMITIVES = [
+ALLOC_PRIMITIVES = [
+  'replication',
+  'split'
+]
+
+MERGE_PRIMITIVES = [
+  'add',
+  'concatenation'
+]
+
+EDGE_PRIMITIVES = [
     'dil_sep_conv_3x3',
     'identitiy',
     'sep_conv_3x3',

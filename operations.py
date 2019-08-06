@@ -1,97 +1,41 @@
+from collections import OrderedDict
+
 import torch
 import torch.nn as nn
 
 OPS = {
-  'dil_sep_conv_3x3' : lambda C, stride, affine: SepConv(C, C, 3, stride, 2, 2, affine=affine),
-  'identity' : lambda C, stride, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
-  'sep_conv_3x3' : lambda C, stride, affine: SepConv(C, C, 3, stride, 1, 1, affine=affine),
-  'sep_conv_5x5' : lambda C, stride, affine: SepConv(C, C, 5, stride, 2, 1, affine=affine),
-  'sep_conv_7x7' : lambda C, stride, affine: SepConv(C, C, 7, stride, 3, 1, affine=affine),
-  'avg_pool_3x3' : lambda C, stride, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
-  'max_pool_3x3' : lambda C, stride, affine: nn.MaxPool2d(3, stride=stride, padding=1),
+  'mbconv-3-3' : lambda C, stride, affine: MBConv(C, C, 3, stride, 3),
+  'mbconv-6-3' : lambda C, stride, affine: MBConv(C, C, 3, stride, 6),
+  'mbconv-3-5' : lambda C, stride, affine: MBConv(C, C, 5, stride, 3),
+  'mbconv-6-5' : lambda C, stride, affine: MBConv(C, C, 5, stride, 6),
+  'mbconv-3-7' : lambda C, stride, affine: MBConv(C, C, 7, stride, 3),
+  'mbconv-6-7' : lambda C, stride, affine: MBConv(C, C, 7, stride, 6),
+  'identitiy' : lambda C, stride, affine: nn.Identity(),
 }
 
-class ReLUConvBN(nn.Module):
+class MBConv(nn.Module):
 
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
-    super(ReLUConvBN, self).__init__()
-    self.op = nn.Sequential(
-      nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_out, kernel_size, stride=stride, padding=padding, bias=False),
-      nn.BatchNorm2d(C_out, affine=affine)
+  def __init__(self, C_in, C_out, kernel_size=3, stride=1, expand_ratio=6):
+    super(MBConv, self).__init__()
+
+    feature_dim = round(C_in * self.expand_ratio)
+    self.inverted_bottleneck = nn.Sequential(
+      nn.Conv2d(C_in, feature_dim, 1, 1, 0, bias=False),
+      nn.BatchNorm2d(feature_dim),
+      nn.ReLU6(inplace=True),
+    )
+    self.depth_conv = nn.Sequential(
+      nn.Conv2d(feature_dim, feature_dim, kernel_size, stride, kernel_size//2, groups=feature_dim, bias=False),
+      nn.BatchNorm2d(feature_dim),
+      nn.ReLU6(inplace=True)
+    )
+    self.point_linear = nn.Sequential(
+      nn.Conv2d(feature_dim, C_out, 1, 1, 0, bias=False),
+      nn.BatchNorm2d(C_out),
     )
 
   def forward(self, x):
-    return self.op(x)
-
-class DilConv(nn.Module):
-    
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
-    super(DilConv, self).__init__()
-    self.op = nn.Sequential(
-      nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=C_in, bias=False),
-      nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
-      nn.BatchNorm2d(C_out, affine=affine),
-      )
-
-  def forward(self, x):
-    return self.op(x)
-
-
-class SepConv(nn.Module):
-    
-  def __init__(self, C_in, C_out, kernel_size, stride, padding, dilation, affine=True):
-    super(SepConv, self).__init__()
-    self.op = nn.Sequential(
-      nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, groups=C_in, bias=False),
-      nn.Conv2d(C_in, C_in, kernel_size=1, padding=0, bias=False),
-      nn.BatchNorm2d(C_in, affine=affine),
-      nn.ReLU(inplace=False),
-      nn.Conv2d(C_in, C_in, kernel_size=kernel_size, stride=1, padding=padding, groups=C_in, bias=False),
-      nn.Conv2d(C_in, C_out, kernel_size=1, padding=0, bias=False),
-      nn.BatchNorm2d(C_out, affine=affine),
-      )
-
-  def forward(self, x):
-    return self.op(x)
-
-
-class Identity(nn.Module):
-
-  def __init__(self):
-    super(Identity, self).__init__()
-
-  def forward(self, x):
+    x = self.inverted_bottleneck(x)
+    x = self.depth_conv(x)
+    x = self.point_linear(x)
     return x
-
-
-class Zero(nn.Module):
-
-  def __init__(self, stride):
-    super(Zero, self).__init__()
-    self.stride = stride
-
-  def forward(self, x):
-    if self.stride == 1:
-      return x.mul(0.)
-    return x[:,:,::self.stride,::self.stride].mul(0.)
-
-
-class FactorizedReduce(nn.Module):
-
-  def __init__(self, C_in, C_out, affine=True):
-    super(FactorizedReduce, self).__init__()
-    assert C_out % 2 == 0
-    self.relu = nn.ReLU(inplace=False)
-    self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
-    self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False) 
-    self.bn = nn.BatchNorm2d(C_out, affine=affine)
-
-  def forward(self, x):
-    x = self.relu(x)
-    out = torch.cat([self.conv_1(x), self.conv_2(x[:,:,1:,1:])], dim=1)
-    out = self.bn(out)
-    return out
-

@@ -7,7 +7,7 @@ from torch.autograd import Variable
 def _concat(xs):
   return torch.cat([x.view(-1) for x in xs])
 
-
+# TODO how to
 class Architect(object):
 
   def __init__(self, model, args):

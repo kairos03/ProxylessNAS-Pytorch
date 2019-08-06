@@ -3,26 +3,32 @@ import torch.nn as nn
 import torch.nn.functional as F
 from operations import *
 from torch.autograd import Variable
-from genotypes import PRIMITIVES
+from genotypes import ALLOC_PRIMITIVES, MERGE_PRIMITIVES, EDGE_PRIMITIVES
 from genotypes import Genotype
 
-
 class MixedOp(nn.Module):
-
+  """
+  mix operation 
+  """
   def __init__(self, C, stride):
+    """
+    C: channel
+    stride: stride
+    """
     super(MixedOp, self).__init__()
     self._ops = nn.ModuleList()
-    for primitive in PRIMITIVES:
+    for primitive in EDGE_PRIMITIVES:
       op = OPS[primitive](C, stride, False)
       if 'pool' in primitive:
         op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
       self._ops.append(op)
 
-  def forward(self, x, weights):
+  def forward(self, x, weights): 
     return sum(w * op(x) for w, op in zip(weights, self._ops))
 
 
-class Cell(nn.Module):
+# darts cell
+class OldCell(nn.Module):
 
   def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev):
     super(Cell, self).__init__()
@@ -38,6 +44,7 @@ class Cell(nn.Module):
 
     self._ops = nn.ModuleList()
     self._bns = nn.ModuleList()
+    # make DAGs
     for i in range(self._steps):
       for j in range(2+i):
         stride = 2 if reduction and j < 2 else 1
@@ -57,8 +64,54 @@ class Cell(nn.Module):
 
     return torch.cat(states[-self._multiplier:], dim=1)
 
+class Node(nn.Module):
+  """
+  Node 
+  """
+  def __init__(self, C, stride):
+    """
+    C: channel
+    stride: stride
+    """
+    super(MixedOp, self).__init__()
+    self._ops = nn.ModuleList()
+    for primitive in EDGE_PRIMITIVES:
+      op = OPS[primitive](C, stride, False)
+      if 'pool' in primitive:
+        op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
+      self._ops.append(op)
+
+  def forward(self, x, weights): # TODO CHANGE to PROXYLESS METHOD
+    return sum(w * op(x) for w, op in zip(weights, self._ops))
+
+
+class Edge(nn.Module):
+  """
+  """
+  def __init__(self):
+    super().__init__()
+    self._ops()
+  
+  def forward(self, x, weights):
+    return sum(w * op(x) for w, op in zip(weights, self._ops))
+
+
+class Cell(nn.Module):
+  def __init__(self, ):
+    super(Cell, self).__init__()
+
+
+class Block(nn.Module):
+  def __init__(self):
+    super().__init__()
+
 
 class Network(nn.Module):
+  def __init__(self):
+    super().__init__()
+
+# Darts Network
+class OldNetwork(nn.Module):
 
   def __init__(self, C, num_classes, layers, criterion, steps=4, multiplier=4, stem_multiplier=3):
     super(Network, self).__init__()
