@@ -2,25 +2,58 @@ import torch
 import torch.nn as nn
 
 OPS = {
-  'none' : lambda C, stride, affine: Zero(stride),
-  'avg_pool_3x3' : lambda C, stride, affine: nn.AvgPool2d(3, stride=stride, padding=1, count_include_pad=False),
-  'max_pool_3x3' : lambda C, stride, affine: nn.MaxPool2d(3, stride=stride, padding=1),
-  'skip_connect' : lambda C, stride, affine: Identity() if stride == 1 else FactorizedReduce(C, C, affine=affine),
-  'sep_conv_3x3' : lambda C, stride, affine: SepConv(C, C, 3, stride, 1, affine=affine),
-  'sep_conv_5x5' : lambda C, stride, affine: SepConv(C, C, 5, stride, 2, affine=affine),
-  'sep_conv_7x7' : lambda C, stride, affine: SepConv(C, C, 7, stride, 3, affine=affine),
-  'dil_conv_3x3' : lambda C, stride, affine: DilConv(C, C, 3, stride, 2, 2, affine=affine),
-  'dil_conv_5x5' : lambda C, stride, affine: DilConv(C, C, 5, stride, 4, 2, affine=affine),
-  'conv_7x1_1x7' : lambda C, stride, affine: nn.Sequential(
-    nn.ReLU(inplace=False),
-    nn.Conv2d(C, C, (1,7), stride=(1, stride), padding=(0, 3), bias=False),
-    nn.Conv2d(C, C, (7,1), stride=(stride, 1), padding=(3, 0), bias=False),
-    nn.BatchNorm2d(C, affine=affine)
-    ),
+  'none' : lambda C_in, C_out, stride, affine: Zero(stride),
+  'mbconv_3_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 3),
+  'mbconv_3_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 1, 3),
+  'mbconv_3_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 1, 3),
+  'mbconv_6_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 6),
+  'mbconv_6_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 1, 6),
+  'mbconv_6_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 1, 6),
 }
 
-class ReLUConvBN(nn.Module):
+def depthwise_conv(in_channels, kernel_size, stride, groups, affine):
+    padding = kernel_size // 2
+    return ConvBNReLU(in_channels, in_channels, kernel_size, stride, padding, groups, affine)
 
+
+class ConvBNReLU(nn.Module):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, groups=1, affine=True, activation=True):
+    super(ConvBNReLU, self).__init__()
+
+    self.conv = nn.Conv2d(C_in, C_out, kernel_size, stride, padding, groups=groups, bias=False)
+    self.bn = nn.BatchNorm2d(C_out, affine=affine)
+    if activation:
+      self.act = nn.ReLU6()
+    
+  def forward(self, x):
+    x = self.conv(x)
+    x = self.bn(x)
+    if hasattr(self, 'act'):
+      x = self.act(x)
+    return x
+
+
+class MBConv(nn.Module):
+  def __init__(self, C_in, C_out, kernel_size, stride, padding, expansion_factor, affine=True):
+    super(MBConv, self).__init__()
+
+    C_exp = C_in * expansion_factor
+    self.res_connect = C_in == C_out and stride == 1
+
+    self.op = nn.Sequential(
+      ConvBNReLU(C_in, C_exp, 1, 1, 0, affine=affine),
+      depthwise_conv(C_exp, kernel_size, stride, C_exp, affine=affine),
+      ConvBNReLU(C_exp, C_out, 1, 1, 0, activation=False, affine=affine)
+    )
+
+  def forward(self, x):
+    if self.res_connect:
+      return self.op(x) + x
+    else: 
+      return self.op(x)
+
+
+class ReLUConvBN(nn.Module):
   def __init__(self, C_in, C_out, kernel_size, stride, padding, affine=True):
     super(ReLUConvBN, self).__init__()
     self.op = nn.Sequential(
@@ -31,6 +64,7 @@ class ReLUConvBN(nn.Module):
 
   def forward(self, x):
     return self.op(x)
+
 
 class DilConv(nn.Module):
     
