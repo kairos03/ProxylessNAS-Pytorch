@@ -3,27 +3,31 @@ import torch.nn as nn
 import torch.nn.functional as F
 from operations import *
 from torch.autograd import Variable
-from genotypes import PRIMITIVES
+from genotypes import ALLOC_PRIMITIVES, MERGE_PRIMITIVES, EDGE_PRIMITIVES
 from genotypes import Genotype
 
-
 class MixedOp(nn.Module):
-  """mixed operation
+  """
+  mix operation 
   """
   def __init__(self, C, stride):
+    """
+    C: channel
+    stride: stride
+    """
     super(MixedOp, self).__init__()
     self._ops = nn.ModuleList()
-    for primitive in PRIMITIVES:
+    for primitive in EDGE_PRIMITIVES:
       op = OPS[primitive](C, stride, False)
       if 'pool' in primitive:
         op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
       self._ops.append(op)
 
-  def forward(self, x, weights):
-    # weighted sum for all operations weights is architacture weight(alpha)
+  def forward(self, x, weights): 
     return sum(w * op(x) for w, op in zip(weights, self._ops))
 
 
+# darts cell
 class Cell(nn.Module):
 
   def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev):
@@ -40,6 +44,7 @@ class Cell(nn.Module):
 
     self._ops = nn.ModuleList()
     self._bns = nn.ModuleList()
+    # make DAGs
     for i in range(self._steps):
       for j in range(2+i):
         stride = 2 if reduction and j < 2 else 1
@@ -59,7 +64,7 @@ class Cell(nn.Module):
 
     return torch.cat(states[-self._multiplier:], dim=1)
 
-
+# Network
 class Network(nn.Module):
 
   def __init__(self, C, num_classes, layers, criterion, steps=4, multiplier=4, stem_multiplier=3):
@@ -105,7 +110,6 @@ class Network(nn.Module):
   def forward(self, input):
     s0 = s1 = self.stem(input)
     for i, cell in enumerate(self.cells):
-      # caclulate alpha softmax
       if cell.reduction:
         weights = F.softmax(self.alphas_reduce, dim=-1)
       else:

@@ -3,31 +3,28 @@ import torch.nn as nn
 import torch.nn.functional as F
 from operations import *
 from torch.autograd import Variable
-from genotypes import ALLOC_PRIMITIVES, MERGE_PRIMITIVES, EDGE_PRIMITIVES
+from genotypes import PRIMITIVES
 from genotypes import Genotype
+import utils
+
 
 class MixedOp(nn.Module):
-  """
-  mix operation 
+  """mixed operation
   """
   def __init__(self, C, stride):
-    """
-    C: channel
-    stride: stride
-    """
     super(MixedOp, self).__init__()
     self._ops = nn.ModuleList()
-    for primitive in EDGE_PRIMITIVES:
+    for primitive in PRIMITIVES:
       op = OPS[primitive](C, stride, False)
       if 'pool' in primitive:
         op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
       self._ops.append(op)
 
-  def forward(self, x, weights): 
+  def forward(self, x, weights):
+    # weighted sum for all operations weights is architacture weight(alpha)
     return sum(w * op(x) for w, op in zip(weights, self._ops))
 
 
-# darts cell
 class Cell(nn.Module):
 
   def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev):
@@ -44,7 +41,6 @@ class Cell(nn.Module):
 
     self._ops = nn.ModuleList()
     self._bns = nn.ModuleList()
-    # make DAGs
     for i in range(self._steps):
       for j in range(2+i):
         stride = 2 if reduction and j < 2 else 1
@@ -64,53 +60,7 @@ class Cell(nn.Module):
 
     return torch.cat(states[-self._multiplier:], dim=1)
 
-class Node(nn.Module):
-  """
-  Node 
-  """
-  def __init__(self, C, stride):
-    """
-    C: channel
-    stride: stride
-    """
-    super(MixedOp, self).__init__()
-    self._ops = nn.ModuleList()
-    for primitive in EDGE_PRIMITIVES:
-      op = OPS[primitive](C, stride, False)
-      if 'pool' in primitive:
-        op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
-      self._ops.append(op)
 
-  def forward(self, x, weights): # TODO CHANGE to PROXYLESS METHOD
-    return sum(w * op(x) for w, op in zip(weights, self._ops))
-
-
-class Edge(nn.Module):
-  """
-  """
-  def __init__(self):
-    super().__init__()
-    self._ops()
-  
-  def forward(self, x, weights):
-    return sum(w * op(x) for w, op in zip(weights, self._ops))
-
-
-class NewCell(nn.Module):
-  def __init__(self, ):
-    super(Cell, self).__init__()
-
-
-class Block(nn.Module):
-  def __init__(self):
-    super().__init__()
-
-
-class NewNetwork(nn.Module):
-  def __init__(self):
-    super().__init__()
-
-# Darts Network
 class Network(nn.Module):
 
   def __init__(self, C, num_classes, layers, criterion, steps=4, multiplier=4, stem_multiplier=3):
@@ -148,7 +98,7 @@ class Network(nn.Module):
     self._initialize_alphas()
 
   def new(self):
-    model_new = Network(self._C, self._num_classes, self._layers, self._criterion).cuda()
+    model_new = Network(self._C, self._num_classes, self._layers, self.criterion).cuda()
     for x, y in zip(model_new.arch_parameters(), self.arch_parameters()):
         x.data.copy_(y.data)
     return model_new
@@ -156,13 +106,16 @@ class Network(nn.Module):
   def forward(self, input):
     s0 = s1 = self.stem(input)
     for i, cell in enumerate(self.cells):
+      # caclulate alpha softmax
       if cell.reduction:
         weights = F.softmax(self.alphas_reduce, dim=-1)
       else:
         weights = F.softmax(self.alphas_normal, dim=-1)
-      s0, s1 = s1, cell(s0, s1, weights)
+      # binarize
+      binarize = utils.binarize(weights)
+      s0, s1 = s1, cell(s0, s1, binarize)
     out = self.global_pooling(s1)
-    logits = self.classifier(out.view(out.size(0),-1))
+    logits = self.classifier(out.view(out.size(0), -1))
     return logits
 
   def _loss(self, input, target):
