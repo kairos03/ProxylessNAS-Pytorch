@@ -4,8 +4,8 @@ from operations import *
 from torch.autograd import Variable
 from utils import drop_path
 
-# Darts Cell
-class DartsCell(nn.Module):
+
+class Cell(nn.Module):
 
   def __init__(self, genotype, C_prev_prev, C_prev, C, reduction, reduction_prev):
     super(Cell, self).__init__()
@@ -58,14 +58,6 @@ class DartsCell(nn.Module):
       s = h1 + h2
       states += [s]
     return torch.cat([states[i] for i in self._concat], dim=1)
-
-
-class Cell(nn.Module):
-  """
-  Tree Structured Cell TODO
-  """
-  def __init__(self):
-    super(Cell, self).__init__()
 
 
 class AuxiliaryHeadCIFAR(nn.Module):

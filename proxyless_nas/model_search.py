@@ -28,7 +28,7 @@ class MixedOp(nn.Module):
 
 
 # darts cell
-class OldCell(nn.Module):
+class Cell(nn.Module):
 
   def __init__(self, steps, multiplier, C_prev_prev, C_prev, C, reduction, reduction_prev):
     super(Cell, self).__init__()
@@ -96,7 +96,7 @@ class Edge(nn.Module):
     return sum(w * op(x) for w, op in zip(weights, self._ops))
 
 
-class Cell(nn.Module):
+class NewCell(nn.Module):
   def __init__(self, ):
     super(Cell, self).__init__()
 
@@ -106,12 +106,12 @@ class Block(nn.Module):
     super().__init__()
 
 
-class Network(nn.Module):
+class NewNetwork(nn.Module):
   def __init__(self):
     super().__init__()
 
 # Darts Network
-class OldNetwork(nn.Module):
+class Network(nn.Module):
 
   def __init__(self, C, num_classes, layers, criterion, steps=4, multiplier=4, stem_multiplier=3):
     super(Network, self).__init__()
