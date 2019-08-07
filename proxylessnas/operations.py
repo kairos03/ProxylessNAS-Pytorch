@@ -2,13 +2,14 @@ import torch
 import torch.nn as nn
 
 OPS = {
-  'none' : lambda C_in, C_out, stride, affine: Zero(stride),
-  'mbconv_3_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 3),
-  'mbconv_3_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 1, 3),
-  'mbconv_3_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 1, 3),
-  'mbconv_6_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 6),
-  'mbconv_6_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 1, 6),
-  'mbconv_6_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 1, 6),
+  'zero' : lambda C_in, C_out, stride, affine: Zero(stride),
+  'identity': lambda C_in, C_out, stride, affine: Identity(),
+  'mbconv_3_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 3, affine),
+  'mbconv_3_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 2, 3, affine),
+  'mbconv_3_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 3, 3, affine),
+  'mbconv_6_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 6, affine),
+  'mbconv_6_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 2, 6, affine),
+  'mbconv_6_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 3, 6, affine),
 }
 
 def depthwise_conv(in_channels, kernel_size, stride, groups, affine):
