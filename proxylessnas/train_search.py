@@ -161,9 +161,6 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     input_search = Variable(input_search, requires_grad=False).cuda()
     target_search = Variable(target_search, requires_grad=False).cuda(async=True)
 
-    # architect parameter alpha update
-    architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
-
     # model weight update
     optimizer.zero_grad()
     logits = model(input)
@@ -172,6 +169,9 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     loss.backward()
     nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
     optimizer.step()
+
+    # architect parameter alpha update
+    architect.step(input, target, input_search, target_search, lr, optimizer, unrolled=args.unrolled)
 
     # get trained model accuracy and update matric
     prec1, prec5 = utils.accuracy(logits, target, topk=(1, 5))

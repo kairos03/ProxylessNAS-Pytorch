@@ -10,7 +10,7 @@ class test_utils(unittest.TestCase):
 
     def test_binarize(self):
         p = torch.tensor([0.1, 0.4, 0.4, 0.1])
-        b = utils.binarize(p)
+        b = utils.binarize(p, 1)
         assert len(b) == len(p)
         assert sum(b) == 1
 
@@ -18,3 +18,9 @@ class test_utils(unittest.TestCase):
         for _ in range(100):
             b = utils.binarize(p)
             assert torch.equal(b, p)
+
+        p = torch.tensor([0.1, 0.4, 0.4, 0.1])
+        b = utils.binarize(p, 2)
+        print(b)
+        assert len(b) == len(p)
+        assert sum(b) == 2

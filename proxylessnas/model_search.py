@@ -77,7 +77,7 @@ class Network(nn.Module):
       nn.Conv2d(3, C_curr, 3, padding=1, bias=False),
       nn.BatchNorm2d(C_curr)
     )
- 
+
     C_prev_prev, C_prev, C_curr = C_curr, C_curr, C
     self.cells = nn.ModuleList()
     reduction_prev = False
@@ -112,7 +112,7 @@ class Network(nn.Module):
       else:
         weights = F.softmax(self.alphas_normal, dim=-1)
       # binarize
-      binarize = utils.binarize(weights)
+      binarize = utils.binarize(weights, 1)
       s0, s1 = s1, cell(s0, s1, binarize)
     out = self.global_pooling(s1)
     logits = self.classifier(out.view(out.size(0), -1))
@@ -137,7 +137,6 @@ class Network(nn.Module):
     return self._arch_parameters
 
   def genotype(self):
-
     def _parse(weights):
       gene = []
       n = 2

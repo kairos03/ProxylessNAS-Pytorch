@@ -19,14 +19,15 @@ class Architect(object):
         lr=args.arch_learning_rate, betas=(0.5, 0.999), weight_decay=args.arch_weight_decay)
 
   def _compute_unrolled_model(self, input, target, eta, network_optimizer):
-    # calculate model loss
+    # forward and calculate model loss
     loss = self.model._loss(input, target)
-    # get all model parameters TODO replace select only two path
+    # get all model parameters TODO replace select only two path each mixed op
     theta = _concat(self.model.parameters()).data
     try:
       moment = _concat(network_optimizer.state[v]['momentum_buffer'] for v in self.model.parameters()).mul_(self.network_momentum)
     except:
       moment = torch.zeros_like(theta)
+    # calculate gradient and pass manual gradients to new model
     dtheta = _concat(torch.autograd.grad(loss, self.model.parameters())).data + self.network_weight_decay*theta
     unrolled_model = self._construct_model_from_theta(theta.sub(eta, moment+dtheta))
     return unrolled_model
@@ -44,12 +45,15 @@ class Architect(object):
     loss.backward()
 
   def _backward_step_unrolled(self, input_train, target_train, input_valid, target_valid, eta, network_optimizer):
+    # unrolled model
     unrolled_model = self._compute_unrolled_model(input_train, target_train, eta, network_optimizer)
+    # forward and calculate unrolled loss
     unrolled_loss = unrolled_model._loss(input_valid, target_valid)
 
+    # compute gradient
     unrolled_loss.backward()
-    dalpha = [v.grad for v in unrolled_model.arch_parameters()]
-    vector = [v.grad.data for v in unrolled_model.parameters()]
+    dalpha = [v.grad for v in unrolled_model.arch_parameters()] # dalpha { L_val(w`, alpha)}
+    vector = [v.grad.data for v in unrolled_model.parameters()] # dw` { L_val(w`, alpha) }
     implicit_grads = self._hessian_vector_product(vector, input_train, target_train)
 
     for g, ig in zip(dalpha, implicit_grads):
@@ -62,9 +66,11 @@ class Architect(object):
         v.grad.data.copy_(g.data)
 
   def _construct_model_from_theta(self, theta):
+    # create new model 
     model_new = self.model.new()
     model_dict = self.model.state_dict()
 
+    # calculate new weight dict(params)
     params, offset = {}, 0
     for k, v in self.model.named_parameters():
       v_length = np.prod(v.size())
@@ -72,6 +78,7 @@ class Architect(object):
       offset += v_length
 
     assert offset == len(theta)
+    # update new param and load updated model
     model_dict.update(params)
     model_new.load_state_dict(model_dict)
     return model_new.cuda()

@@ -120,8 +120,8 @@ def create_exp_dir(path, scripts_to_save=None):
       shutil.copyfile(script, dst_file)
 
 
-def binarize(probapility):
-  selected = torch.multinomial(probapility, 1)
+def binarize(probapility, select=1):
+  selected = torch.multinomial(probapility, select)
   binarize_array = torch.zeros_like(probapility)
   binarize_array[selected] = 1
   return binarize_array
