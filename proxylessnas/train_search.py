@@ -55,8 +55,12 @@ fh = logging.FileHandler(os.path.join(args.save, 'log.txt'))
 fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
-# CIFAR classes
-CIFAR_CLASSES = 10
+# classes
+CLASSES = 1000
+# model config
+channels = [32, 16, 24, 32, 64, 96, 160, 320, 1280]
+steps =    [1,  1,  2,  3,  4,  3,  3,   1,   1]
+strides =  [2,  1,  2,  2,  2,  1,  2,   1,   1]
 
 # main
 def main():
@@ -75,10 +79,11 @@ def main():
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
+
   # criterion, model, optimizer, for model training
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
-  model = Network(args.init_channels, CIFAR_CLASSES, args.layers, criterion)
+  model = Network(channels, steps, strides, CLASSES, criterion)
   model = model.cuda()
   logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
@@ -89,22 +94,26 @@ def main():
       weight_decay=args.weight_decay)
 
   # prepare datasets
-  train_transform, valid_transform = utils._data_transforms_cifar10(args)
-  train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
+  #train_transform, valid_transform = utils._data_transforms_cifar10(args)
+  #train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
+  
+  train_transform, valid_transform = utils._data_transforms_imagenet(args)
+  train_data = dset.ImageNet(root=args.data, split='train', download=True, transform=train_transform)
+  valid_data = dset.ImageNet(root=args.data, split='val', download=True, transform=valid_transform)
 
   num_train = len(train_data)
-  indices = list(range(num_train))
-  split = int(np.floor(args.train_portion * num_train))
+  #indices = list(range(num_train))
+  #split = int(np.floor(args.train_portion * num_train))
 
   # create dataloader
   train_queue = torch.utils.data.DataLoader(
       train_data, batch_size=args.batch_size,
-      sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
+      #sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[:split]),
       pin_memory=True, num_workers=2)
 
   valid_queue = torch.utils.data.DataLoader(
-      train_data, batch_size=args.batch_size,
-      sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
+      valid_data, batch_size=args.batch_size,
+      #sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
       pin_memory=True, num_workers=2)
 
   # learning rate scheduler with cosineAnnealing
@@ -125,8 +134,8 @@ def main():
     genotype = model.genotype()
     logging.info('genotype = %s', genotype)
 
-    print(F.softmax(model.alphas_normal, dim=-1))
-    print(F.softmax(model.alphas_reduce, dim=-1))
+    for alpha in model.arch_parameters():
+      print(F.softmax(alpha, dim=-1).data)
 
     # training
     train_acc, train_obj = train(train_queue, valid_queue, model, architect, criterion, optimizer, lr)

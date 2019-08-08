@@ -2,14 +2,14 @@ import torch
 import torch.nn as nn
 
 OPS = {
-  'zero' : lambda C_in, C_out, stride, affine: Zero(stride),
-  'identity': lambda C_in, C_out, stride, affine: Identity(),
-  'mbconv_3_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 3, affine),
-  'mbconv_3_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 2, 3, affine),
-  'mbconv_3_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 3, 3, affine),
-  'mbconv_6_3x3' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 6, affine),
-  'mbconv_6_5x5' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 2, 6, affine),
-  'mbconv_6_7x7' : lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 3, 6, affine),
+  'none': lambda C_in, C_out, stride, affine: Zero(C_out, stride),
+  'identity': lambda C_in, C_out, stride, affine: Identity() if stride == 1 else FactorizedReduce(C_in, C_out, affine),
+  'mbconv_3_3x3': lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 3, affine),
+  'mbconv_3_5x5': lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 2, 3, affine),
+  'mbconv_3_7x7': lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 3, 3, affine),
+  'mbconv_6_3x3': lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 3, stride, 1, 6, affine),
+  'mbconv_6_5x5': lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 5, stride, 2, 6, affine),
+  'mbconv_6_7x7': lambda C_in, C_out, stride, affine: MBConv(C_in, C_out, 7, stride, 3, 6, affine),
 }
 
 def depthwise_conv(in_channels, kernel_size, stride, groups, affine):
@@ -112,15 +112,23 @@ class Identity(nn.Module):
 
 class Zero(nn.Module):
 
-  def __init__(self, stride):
+  def __init__(self, C_out, stride):
     super(Zero, self).__init__()
     self.stride = stride
+    self.C_out = C_out
 
   def forward(self, x):
-    if self.stride == 1:
-      return x.mul(0.)
-    return x[:,:,::self.stride,::self.stride].mul(0.)
-
+    n, _, h, w = x.size()
+    c = self.C_out
+    h //= self.stride
+    w //= self.stride
+    if x.is_cuda:
+        with torch.cuda.device(x.get_device()):
+            padding = torch.cuda.FloatTensor(n, c, h, w).fill_(0)
+    else:
+        padding = torch.zeros(n, c, h, w)
+    padding = torch.autograd.Variable(padding, requires_grad=False)
+    return padding
 
 class FactorizedReduce(nn.Module):
 
@@ -129,7 +137,7 @@ class FactorizedReduce(nn.Module):
     assert C_out % 2 == 0
     self.relu = nn.ReLU(inplace=False)
     self.conv_1 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
-    self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False) 
+    self.conv_2 = nn.Conv2d(C_in, C_out // 2, 1, stride=2, padding=0, bias=False)
     self.bn = nn.BatchNorm2d(C_out, affine=affine)
 
   def forward(self, x):
