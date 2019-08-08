@@ -1,13 +1,15 @@
 import torch
 import numpy as np
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 
+import utils
 
 def _concat(xs):
   return torch.cat([x.view(-1) for x in xs])
 
-
+        
 class Architect(object):
   """ architect
   """
@@ -21,7 +23,8 @@ class Architect(object):
   def _compute_unrolled_model(self, input, target, eta, network_optimizer):
     # forward and calculate model loss
     loss = self.model._loss(input, target)
-    # get all model parameters TODO replace select only two path each mixed op
+
+    # get all model parameters
     theta = _concat(self.model.parameters()).data
     try:
       moment = _concat(network_optimizer.state[v]['momentum_buffer'] for v in self.model.parameters()).mul_(self.network_momentum)
@@ -81,6 +84,17 @@ class Architect(object):
     # update new param and load updated model
     model_dict.update(params)
     model_new.load_state_dict(model_dict)
+
+    # mask alpha only select two path
+    new_alpha = []
+    for alpha in self.model.arch_parameters():
+      new_step = []
+      for step in F.softmax(alpha, dim=-1).data:
+        # select two path
+        new_step.append(utils.binarize(step, 2))
+      new_alpha.append(Variable(torch.stack(new_step), requires_grad=True))
+    self.model._alphas_parameters = new_alpha
+
     return model_new.cuda()
 
   def _hessian_vector_product(self, vector, input, target, r=1e-2):

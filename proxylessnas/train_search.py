@@ -21,7 +21,7 @@ from architect import Architect
 parser = argparse.ArgumentParser("cifar")
 parser.add_argument('--data', type=str, default='../data', help='location of the data corpus')
 parser.add_argument('--batch_size', type=int, default=64, help='batch size')
-parser.add_argument('--learning_rate', type=float, default=0.025, help='init learning rate')
+parser.add_argument('--learning_rate', type=float, default=0.001, help='init learning rate')
 parser.add_argument('--learning_rate_min', type=float, default=0.001, help='min learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
 parser.add_argument('--weight_decay', type=float, default=3e-4, help='weight decay')
@@ -81,7 +81,7 @@ def main():
 
 
   # criterion, model, optimizer, for model training
-  criterion = nn.CrossEntropyLoss()
+  criterion = nn.CrossEntropyLoss() # TODO add latency loss
   criterion = criterion.cuda()
   model = Network(channels, steps, strides, CLASSES, criterion)
   model = model.cuda()
@@ -116,7 +116,7 @@ def main():
       #sampler=torch.utils.data.sampler.SubsetRandomSampler(indices[split:num_train]),
       pin_memory=True, num_workers=2)
 
-  # learning rate scheduler with cosineAnnealing
+  # learning rate scheduler with cosineAnnealingtopk
   scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer, float(args.epochs), eta_min=args.learning_rate_min)
 
@@ -148,7 +148,6 @@ def main():
     utils.save(model, os.path.join(args.save, 'weights.pt'))
 
 # training
-# TODO change to proxyless method
 def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
   # init matric
   objs = utils.AvgrageMeter()
@@ -189,7 +188,7 @@ def train(train_queue, valid_queue, model, architect, criterion, optimizer, lr):
     top5.update(prec5.item(), n)
 
     if step % args.report_freq == 0:
-      logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+      logging.info('train %05d %e %f %f', step, objs.avg, top1.avg, top5.avg)
 
   return top1.avg, objs.avg
 
