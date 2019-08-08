@@ -12,7 +12,7 @@ class MixedOp(nn.Module):
   """
   def __init__(self, C_in, C_out, stride):
     super(MixedOp, self).__init__()
-    self._ops = nn.ModuleList()
+    self._ops = nn.ModuleList()weights
     for primitive in PRIMITIVES:
       if primitive == 'identity' and C_in != C_out:
         continue
@@ -55,7 +55,7 @@ class Network(nn.Module):
     self._strides_list = strides_list   # [2,  1,  2,  2,  2,  1,  2,   1,   1]
     self._num_classes = num_classes     # 1000 for Imagenet
     self._criterion = criterion
-            
+    
     # stem layer
     self.stem = nn.Sequential(
       nn.Conv2d(3, self._C_list[0], 3, stride=self._strides_list[0], padding=1, bias=False),
@@ -88,7 +88,8 @@ class Network(nn.Module):
     for i, cell in enumerate(self.cells):
       alpha = F.softmax(self._alphas_parameters[i], dim=-1)
       x = cell(x, alpha)
-    x = self.post(x)
+    x = self.post(x)        self.predictor = predictor
+
     x = self.global_pooling(x)
     logits = self.classifier(x.view(x.size(0), -1))
     return logits
