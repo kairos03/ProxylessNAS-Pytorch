@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from operations import *
+from proxylessnas.operations import *
 from torch.autograd import Variable
-from genotypes import PRIMITIVES, Genotype
-import utils
+from proxylessnas.genotypes import PRIMITIVES, Genotype
+import proxylessnas.utils
 
 
 class MixedOp(nn.Module):
@@ -12,7 +12,7 @@ class MixedOp(nn.Module):
   """
   def __init__(self, C_in, C_out, stride):
     super(MixedOp, self).__init__()
-    self._ops = nn.ModuleList()weights
+    self._ops = nn.ModuleList()
     for primitive in PRIMITIVES:
       if primitive == 'identity' and C_in != C_out:
         continue
@@ -50,9 +50,9 @@ class Network(nn.Module):
 
   def __init__(self, C_list, steps_list, strides_list, num_classes, criterion):
     super(Network, self).__init__()
-    self._C_list = C_list               # [32, 16, 24, 32, 64, 96, 160, 320, 1280]  ## TODO how to select Channel dynamically??
-    self._steps_list = steps_list       # [1,  1,  2,  3,  4,  3,  3,   1,   1]
-    self._strides_list = strides_list   # [2,  1,  2,  2,  2,  1,  2,   1,   1]
+    self._C_list = C_list
+    self._steps_list = steps_list
+    self._strides_list = strides_list
     self._num_classes = num_classes     # 1000 for Imagenet
     self._criterion = criterion
     
@@ -88,8 +88,7 @@ class Network(nn.Module):
     for i, cell in enumerate(self.cells):
       alpha = F.softmax(self._alphas_parameters[i], dim=-1)
       x = cell(x, alpha)
-    x = self.post(x)        self.predictor = predictor
-
+    x = self.post(x)
     x = self.global_pooling(x)
     logits = self.classifier(x.view(x.size(0), -1))
     return logits
@@ -99,7 +98,6 @@ class Network(nn.Module):
     return self._criterion(logits, target) 
 
   def _initialize_alphas(self):
-    k = self._steps_list[2:8]
     num_ops = len(PRIMITIVES)
 
     # init alpha param for each mixed op
